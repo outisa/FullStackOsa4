@@ -1,5 +1,5 @@
 const blogsRouter = require('express').Router()
-const Blog = require('../models/blog.js')
+const Blog = require('../models/blog')
 const User = require('../models/user')
 const jwt = require('jsonwebtoken')
 
@@ -10,7 +10,7 @@ blogsRouter.get('/', async (request, response) => {
 })
 
 blogsRouter.post('/', async (request, response, next) => {
-  const body = request.body
+  const blog = new Blog(request.body)
   
   try {
     if (request.token !== null) {
@@ -22,21 +22,17 @@ blogsRouter.post('/', async (request, response, next) => {
  
       const user = await User.findById(decodedToken.id)
 
-      const blog = new Blog({
-        title: body.title,
-        author: body.author,
-        url: body.url,
-        user: user._id
-      })
+      blog.user = user.id
 
-      if ( blog.likes === null) {
+      if (!blog.likes) {
         blog.likes = 0
       }
 
-      const savedBlog = await blog.save()
-      user.blogs = user.blogs.concat(savedBlog._id)
+      const bl = await blog.save()
+      user.blogs = user.blogs.concat(bl._id)
       await user.save()
-      return response.json(savedBlog.toJSON())
+      const savedBlog = await Blog.findOne({ _id: bl._id }).populate('user', {username: 1, name: 1})
+      return response.status(201).json(savedBlog)
     }
     response.status(401).send({ error: 'not signed in' })
   } catch (exception) {
@@ -69,17 +65,21 @@ blogsRouter.delete('/:id', async (request, response, next) => {
 })
 
 blogsRouter.put('/:id', async (request, response, next) => {
+  
   const body = request.body
 
   const blog = {
-    likes: body.likes
+    user: body.user,
+    likes: body.likes,
+    author: body.author,
+    title: body.title,
+    body: body.url
   }
 
-  try {
-    const updatetBlog = await Blog.findByIdAndUpdate(request.params.id, blog, { new: true })
-    response.json(updatetBlog.toJSON())
-  } catch (exception) {
-    next(exception)
-  }
+  
+  const update = await Blog.findByIdAndUpdate(request.params.id, blog, { new: true })
+  const updatetBlog = await Blog.findOne({ _id: update._id }).populate('user', {username: 1, name: 1})
+  response.json(updatetBlog.toJSON())
+  
 })
 module.exports = blogsRouter
