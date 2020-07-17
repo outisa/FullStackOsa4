@@ -2,12 +2,51 @@ const blogsRouter = require('express').Router()
 require('express-async-errors')
 const Blog = require('../models/blog')
 const User = require('../models/user')
+const Comment = require('../models/comment')
 const jwt = require('jsonwebtoken')
+const { json } = require('express')
 
+blogsRouter.get('/:id', async (request, response) => {
+  const id = request.params.id
+  const blog = await Blog.findOne({ _id: id })
+    .populate('user', {username: 1, name: 1})
+    .populate('comments', {content: 1})
+  if (blog) {
+    response.json(blog.toJSON())
+  }
+})
 
 blogsRouter.get('/', async (request, response) => {
-  const blogs = await Blog.find({}).populate('user', {username: 1, name: 1})
+  const blogs = await Blog.find({})
+      .populate('user', {username: 1, name: 1})
+      .populate('comments', {content: 1})
   response.json(blogs.map(blog => blog.toJSON()))
+})
+
+blogsRouter.post('/:id/comments', async (request, response) => {
+  if (request.token !== null) {
+    const decodedToken = jwt.verify(request.token, process.env.SECRET)
+  
+    if (!decodedToken.id) {
+      return response.status(401).json( { error: 'token missing or invalid' } )
+    }
+    const comment = new Comment(request.body)
+    console.log(comment)
+    const id = request.params.id
+    const blog = await Blog.findById(id)
+    comment.blog = blog._id
+    const savedComment = await comment.save()
+    blog.comments = blog.comments.concat(savedComment._id)
+    await blog.save()
+    const savedBlog = await Blog.findOne({ _id: id })
+      .populate('user', {username: 1, name: 1})
+      .populate('comments', {content: 1})
+    
+    console.log(savedBlog)
+    return response.status(201).json(savedBlog)
+  }
+  response.status(401).send({ error: 'not signed in' })
+
 })
 
 blogsRouter.post('/', async (request, response, next) => {
